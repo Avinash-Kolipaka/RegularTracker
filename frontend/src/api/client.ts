@@ -1,4 +1,4 @@
-const API_BASE = '/api/v1';
+const API_BASE = ((import.meta as any).env?.VITE_API_BASE as string) || '/api/v1';
 
 class ApiClient {
   private accessToken: string | null = null;

@@ -14,9 +14,11 @@ load_dotenv(BASE_DIR / '.env')
 SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-regulatrack-default-dev-key')
 DEBUG = os.getenv('DEBUG', 'True').lower() in ('true', '1', 't')
 
-ALLOWED_HOSTS = [host.strip() for host in os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1,[::1],testserver').split(',') if host.strip()]
+ALLOWED_HOSTS = [host.strip() for host in os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1,[::1],testserver,.onrender.com,.vercel.app,.railway.app').split(',') if host.strip()]
 if 'testserver' not in ALLOWED_HOSTS:
     ALLOWED_HOSTS.append('testserver')
+if '*' in ALLOWED_HOSTS or os.getenv('ALLOW_ALL_HOSTS', 'False').lower() in ('true', '1'):
+    ALLOWED_HOSTS = ['*']
 
 # Application definition
 INSTALLED_APPS = [
@@ -50,6 +52,7 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -79,27 +82,46 @@ TEMPLATES = [
 WSGI_APPLICATION = 'config.wsgi.application'
 
 # Database configuration
-# Defaults to SQLite for zero-friction local development if DB_ENGINE is sqlite or unset,
-# otherwise connects to PostgreSQL.
-db_engine = os.getenv('DB_ENGINE', 'sqlite').lower()
-if db_engine == 'postgres' or db_engine == 'postgresql':
-    DATABASES = {
-        'default': {
-            'ENGINE': 'django.db.backends.postgresql',
-            'NAME': os.getenv('DB_NAME', 'regulatrack'),
-            'USER': os.getenv('DB_USER', 'postgres'),
-            'PASSWORD': os.getenv('DB_PASSWORD', 'postgres'),
-            'HOST': os.getenv('DB_HOST', 'localhost'),
-            'PORT': os.getenv('DB_PORT', '5432'),
+# If DATABASE_URL is provided (Render / Railway / Heroku / Supabase / Neon), parse it.
+# Otherwise check DB_ENGINE (postgres vs sqlite).
+database_url = os.getenv('DATABASE_URL')
+if database_url:
+    try:
+        import dj_database_url
+        DATABASES = {
+            'default': dj_database_url.config(
+                default=database_url,
+                conn_max_age=600,
+                conn_health_checks=True,
+            )
         }
-    }
+    except ImportError:
+        DATABASES = {
+            'default': {
+                'ENGINE': 'django.db.backends.sqlite3',
+                'NAME': BASE_DIR / 'regulatrack.db',
+            }
+        }
 else:
-    DATABASES = {
-        'default': {
-            'ENGINE': 'django.db.backends.sqlite3',
-            'NAME': BASE_DIR / os.getenv('DB_NAME', 'regulatrack.db'),
+    db_engine = os.getenv('DB_ENGINE', 'sqlite').lower()
+    if db_engine == 'postgres' or db_engine == 'postgresql':
+        DATABASES = {
+            'default': {
+                'ENGINE': 'django.db.backends.postgresql',
+                'NAME': os.getenv('DB_NAME', 'regulatrack'),
+                'USER': os.getenv('DB_USER', 'postgres'),
+                'PASSWORD': os.getenv('DB_PASSWORD', 'postgres'),
+                'HOST': os.getenv('DB_HOST', 'localhost'),
+                'PORT': os.getenv('DB_PORT', '5432'),
+            }
         }
-    }
+    else:
+        DATABASES = {
+            'default': {
+                'ENGINE': 'django.db.backends.sqlite3',
+                'NAME': BASE_DIR / os.getenv('DB_NAME', 'regulatrack.db'),
+            }
+        }
 
 # Custom User Model (Mandatory before initial migrations)
 AUTH_USER_MODEL = 'accounts.User'
@@ -159,6 +181,13 @@ SIMPLE_JWT = {
 cors_origins = os.getenv('CORS_ALLOWED_ORIGINS', 'http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000').split(',')
 CORS_ALLOWED_ORIGINS = [origin.strip() for origin in cors_origins if origin.strip()]
 CORS_ALLOW_CREDENTIALS = True
+if os.getenv('CORS_ALLOW_ALL_ORIGINS', 'True').lower() in ('true', '1'):
+    CORS_ALLOW_ALL_ORIGINS = True
+CORS_ALLOWED_ORIGIN_REGEXES = [
+    r"^https://.*\.vercel\.app$",
+    r"^https://.*\.onrender\.com$",
+    r"^https://.*\.railway\.app$",
+]
 
 # DRF Spectacular OpenAPI Documentation
 SPECTACULAR_SETTINGS = {
